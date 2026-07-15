@@ -38,7 +38,27 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(agentforge
     src/main.cpp
+    src/hydraforge_client.cpp
 )
+
+# Public include directory for AgentForge headers (e.g. hydraforge_client.h).
+# Sprint 24 Day 2+: clients can `#include "agentforge/..."`.
+target_include_directories(agentforge
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# FTXUI v6.1.9 vendored at vendor/ftxui/ (Day 2 tarball vendor).
+# FTXUI is header-only; we add its include path so Day 3+ TUI code can
+# `#include <ftxui/...>` without find_package ceremony.
+# Note: vendor/ftxui also has its own CMakeLists.txt (for building its
+# examples/tests); we do NOT add_subdirectory it — header-only usage only.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ftxui/include)
+    target_include_directories(agentforge
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ftxui/include
+    )
+endif()
 
 # Sprint 24 Day 1 target_link_libraries is intentionally minimal.
 # Day 3+ will add: agenticdsl::engine (DSLEngine), hydraforge::pdk (PDK macros),
