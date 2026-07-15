@@ -57,6 +57,11 @@ public:
     // Initialize: load LLM provider, register tools, create agent.
     // Returns true on success, false on configuration failure (e.g., missing
     // OPENAI_API_KEY env var).
+    //
+    // Day 3 status: FetchContent(HydraForge) BLOCKED on HydraForge monorepo
+    // `external/taskflow` missing (see docs/ADR-AF-001-design.md §Known
+    // Limitations #1). Day 4 pivots to MockLLMProvider-only path; real LLM
+    // deferred until HydraForge ships install rules.
     bool initialize();
 
     // Start a new agent session with user_input. Returns false if a session
