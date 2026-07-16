@@ -89,53 +89,36 @@
 
 ---
 
-## §已知限制 (Day 3 lessons learned)
+## §Day 4 更新 (2026-07-15) — Oracle Option D 路径完成
 
-### 限制 1: HydraForge FetchContent 因 monorepo 内部 `external/taskflow` 缺失而阻塞 (2026-07-15)
+**事件**: Day 3 STOP 触发 (FetchContent blocked on `external/taskflow` missing) 后, Oracle 推荐 Option D: **直接在 HydraForge 修根本原因**, 优于 MockLLMProvider 旁路方案。
 
-**问题**:
-```
-$ cmake -DAGENTFORGE_FETCH_HYDRAFORGE=ON -B build -S .
-CMake Error at build/_deps/hydraforge-src/CMakeLists.txt:46 (add_subdirectory):
-  add_subdirectory given source "external/taskflow" which is not an existing
-  directory.
-```
+**执行结果**:
 
-**根因**: HydraForge monorepo `CMakeLists.txt` 第 46 行引用 `external/taskflow`，但该目录不在 git tree 中（不是 submodule，`.gitmodules` 中也没有 — HydraForge 内部 vendoring 不完整）。
+| 步骤 | 状态 | 验证 |
+|------|:---:|------|
+| HydraForge commit `a413c24` (4 files) — minimal CMakeLists + LICENSE + TaskflowConfig.cmake.in | ✅ | 已 push 到 remote |
+| HydraForge commit `ab0be49` (88 files) — taskflow/ + cmake/ 核心库 (1.1MB) | ✅ | 已 push 到 remote |
+| HydraForge 验证 | ✅ | cmake configure OK + 77/77 ctest PASS 零回归 |
+| 3rd-party/ (35MB benchmarks/tests deps) | ⏸ **未 vendored** | 验证: cmake configure 仍 OK (TF_BUILD_TESTS=OFF + TF_BUILD_BENCHMARKS=OFF) + 77/77 ctest PASS; 不需要 |
+| AgentForge FetchContent 验证 | ✅ | `cmake -DAGENTFORGE_FETCH_HYDRAFORGE=ON` 33.8s 通过, HydraForge Runtime + PDK enabled |
 
-**Oracle B+ STOP 条件触发**: "If FetchContent fails after 2h debugging → commit ADR-AF-001 lessons learned + pivot to alternative path"
+**§已知限制 (Day 3) 撤销**: 限制 1 (FetchContent blocked) 已通过 Option D 修复, 不再适用. 撤销 Day 3 pivot 决策 (Mock-only 路径不再需要).
 
-**Day 3 实际决策**（<2h 失败，立即 pivot）:
-- ❌ **不**等待 HydraForge 修 `external/taskflow`（阻塞 AgentForge 进度）
-- ❌ **不**尝试 vendor HydraForge 整个 monorepo（100s MB，超过 AgentForge MVP 合理体积）
-- ✅ **采用 Mock-only Day 4 路径**：跳过 FetchContent，使用 HydraForge `examples/agent_simple/` 的 MockLLMProvider 模式作为参考，但**不直接 fetch 整个 Runtime**
-- ✅ **建议 HydraForge 侧起草 ADR-AF-001 镜像提案**：推动 Runtime install rules + `find_package(HydraForge ...)` consumer entry（这是 Sprint 24 末决策点要重新评估的硬依赖）
+**§决策 3 (LLM 接入) 恢复**: Day 4+ 恢复原始计划 - `LLMProviderFactory::create("openai")` + C16 Decorator 链 (CostTracking + RateLimit).
 
-**对 §决策 3 (LLM 接入) 的影响**:
-- Day 4 起改用简化 LLM 接入：`HydraForgeMockClient` 复用 `agenticdsl::MockLLMProvider` 模式
-- 真实 LLM (OpenAI API) 接入推迟到 HydraForge install rules ship 后 (Sprint 25+)
+**偏离 HydraForge 现有 submodule 模式 (nlohmann_json/inja/yaml-cpp)**: 选择 vendored 而非 submodule, 原因:
+- github.com TLS 不稳定 (240s git submodule add timeout, GnuTLS recv -110)
+- vendored = 消费者无需 git submodule update --init (减少摩擦)
+- 1.1MB 体积可接受 (vs HydraForge 总数 ~50MB)
 
-**演进路径调整**:
-| 路径 | 原计划 | Day 3 调整后 |
-|------|--------|-------------|
-| Day 4 (原本：HydraForgeClient 真实 LLM) | `LLMProviderFactory::create("openai")` + Decorator | 改用 MockLLMProvider 模式 + `DEFINE_AGENT` 端到端验证 |
-| Day 5-8 工具 | 7 个 fs/* + shell/exec | 不变（DECLARE_TOOL 不依赖 HydraForge Runtime） |
-| 真实 LLM 接入 | Day 9-10 | **推迟到 HydraForge install rules ship 后**（ADR-AF-001 提案触发） |
+**§下一决策点**:
 
-**对本文档 §决策 1-5 的影响**: 决策 1/2/4/5 不变（FTXUI vendor + React loop + DECLARE_TOOL + stdin transport 均不依赖 HydraForge Runtime）。决策 3 (LLM) 暂时降级为 MockLLMProvider，等 install rules ship 后升级。
+1. **2026-07-29 (Sprint 24 末验收)**: 评估 3 个决策点
+   - (a) AgentForge Day 5-8 工具开发是否按原计划前进 (DECLARE_TOOL × 5)
+   - (b) Day 9 真实 LLM 端到端 (OpenAI API key + Decorator 链) 是否能跑通
+   - (c) Sprint 25 是否启动第二 domain agent (`sql_assistant` / `doc_writer`)
 
-**对 §蓝图的影响**: 同步 HydraForge `docs/proposals/implementation/agentforge-mvp-blueprint.md` 标记 Day 4 调整。
+2. **Sprint 25 末 (2026-08-12)**: 评估 Phase 6 服务化是否重启 (per HydraForge plan §六)
 
----
-
-## §下一决策点
-
-1. **2026-07-29 (Sprint 24 末验收)**: 评估 4 个决策点
-   - (a) HydraForge install rules 是否 ship → 决定 Day 9 真实 LLM 是否能继续
-   - (b) external/taskflow 是否修复 → 决定 FetchContent 路径是否可用
-   - (c) AgentForge Day 4-8 工具开发是否按 Mock-only 路径前进
-   - (d) Sprint 25 是否启动第二 domain agent (`sql_assistant` / `doc_writer`)
-
-2. **Sprint 25 末 (2026-08-12)**: 评估 Phase 6 服务化是否重启（per HydraForge plan §六）
-
-3. **HydraForge 侧 ADR-AF-001 提案**: 起草 Runtime install rules + consumer entry 提案（推动 FetchContent 路径解锁）
+3. **HydraForge 侧 deferred 事项**: install rules + `find_package(HydraForge ...)` consumer entry 提案 (不阻塞 Sprint 24, Sprint 25+ 评估)
