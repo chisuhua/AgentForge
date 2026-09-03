@@ -59,6 +59,30 @@
 
 **演进路径**: Sprint 28+ 实现 TUI ConfirmationDialog 填 HydraForge ADR-0004 债；ApprovalHandler 切换 transport 零代码。
 
+### 决策 6: 双 Agent 路由 (2026-09-03 Sprint 25+ U4)
+
+| 选项 | 接受/拒绝 | 理由 |
+|------|:---------:|------|
+| **Client 内部 `std::unordered_map<std::string, std::unique_ptr<IAgent>>`** | ✅ 接受 | U4 仅 2 个 Agent，map 足够；`agentforge::IAgent` 抽象最小化（virtual `run(const std::string&)` + `agent_id()`）；未来扩展 Registry 再升级 |
+| HydraForge `IAgentRegistry` (HydraForge ADR-0082 V1 骨架) | ❌ (U4) | V1 骨架 ship 但 AgentForge 前置阶段未接入；U4 范围内避免双引入 |
+| CapabilityRegistry + RemoteAgentAdapter | ❌ (U4) | HydraForge ADR-0060 决策 2，Phase 2 目标 |
+
+**演进路径**: Sprint 28+（AgentForge Phase 3）接入 HydraForge `IAgentRegistry`，将 map 替换为 `IAgentRegistry::register_agent()`。
+
+### 决策 7: Repo 关系 = 维持 dual-repo (2026-09-03 Oracle 复审)
+
+Oracle session `ses_f988ee9adffe86hvD0UBTb3I6h` 用 commit 频率数据证伪"同步开发"前提（HydraForge 3 周 292 commits vs AgentForge 0/3 周）：
+
+| 选项 | 接受/拒绝 | 理由 |
+|------|:---------:|------|
+| **dual-repo + FetchContent pinned commit** | ✅ 接受 | 0 额外开销；`FetchContent + pinned commit ≈ submodule 语义`但无 git 工作流税 |
+| AgentForge 作 HydraForge submodule | ❌ | 方向性错误（依赖反向）；C1 验证目标受损；迁移成本 4-6h |
+| HydraForge monorepo 内 `examples/agent_chat/` | ❌ | 蓝图 §二已排除（monorepo = engine 职责） |
+
+**HydraForge pin commit**: `f106c97`（2026-09-03 baseline: docs(active-status): close master plan drift tracking）
+**Bump 流程**: 改 SHA → `cmake -B build_with_hf -DAGENTFORGE_FETCH_HYDRAFORGE=ON` → ctest；失败即回滚上一 SHA
+**Revisit 触发**: AgentForge 连续 2 周 ≥20 commits/周 且 pin bump 每周 >3 次
+
 ---
 
 ## 详细蓝图
