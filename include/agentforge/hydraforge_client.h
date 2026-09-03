@@ -1,51 +1,24 @@
-// HydraForgeClient — minimal interface for HydraForge Runtime + PDK integration
-//
-// Sprint 24 Day 2: interface only (no implementation yet). Implementation
-// arrives in Day 3+ when HydraForge FetchContent is verified + DSLEngine
-// construction signature is confirmed.
-//
-// Design (per ADR-AF-001-design.md §五决策 3):
-//   - LLM 接入: LLMProviderFactory::create("openai") + C16 Decorator chain
-//   - 工具注册: DECLARE_TOOL (simple) + register_tool_function (stateful)
-//   - Agent loop: DEFINE_AGENT(CodingAssistant, React) (per blueprint §四)
-//
-// Thread model (per ADR-0020):
-//   - DSLEngine per-instance owned by main thread
-//   - IInteractionBus = std::shared_ptr (atomic cross-thread safe)
-//   - Worker threads push tokens; TUI main thread reads via subscription
-
 #ifndef AGENTFORGE_HYDRAFORGE_CLIENT_H
 #define AGENTFORGE_HYDRAFORGE_CLIENT_H
 
 #include <memory>
 #include <string>
+#include <vector>
 
-// Forward declarations — keep header light, full HydraForge types stay in .cpp
-namespace agenticdsl {
-    class DSLEngine;
-    class IInteractionBus;
-}
+namespace agentforge { class IAgent; }
 
 namespace agentforge {
 
 // HydraForgeClient wraps the HydraForge DSLEngine + IInteractionBus for use
-// from the AgentForge TUI shell. Owns the DSLEngine instance and the bus;
-// exposes minimal methods for the TUI to start/stop agent sessions.
+// from the AgentForge TUI shell.
 //
-// Lifecycle:
-//   1. HydraForgeClient client;            // construct (no I/O)
-//   2. client.initialize();                // load LLM provider, register tools
-//   3. client.start_session(user_input);   // kicks off async agent run
-//   4. (tokens stream via IInteractionBus subscription in TUI)
-//   5. client.stop_session();              // user Ctrl+C or natural end
+// U4 (2026-09-03) scope: minimal client with Agent registry, no DSLEngine
+// wiring yet. Future phases may add DSLEngine construction + IInteractionBus
+// subscription + LLM provider wiring per `docs/ADR-AF-001-design.md`.
 //
-// Sprint 24 Day 3+ responsibilities:
-//   - Construct DSLEngine
-//   - Build InMemoryBus + inject via DSLEngine::set_interaction_bus()
-//   - Wrap LLMProviderFactory::create("openai") with CostTracking+RateLimit decorators
-//   - DECLARE_TOOL × 7 (fs/read, fs/write, fs/edit, fs/glob, fs/grep, shell/exec, +1 ext)
-//   - DEFINE_AGENT(CodingAssistant, AgentLoopType::React)
-//   - Map IInteractionBus::subscribe_events() → TUI event callbacks
+// Thread model: Agent registry is protected by a mutex. Run() requests are
+// serialized within a single client instance; multi-threaded run() is out
+// of scope for U4.
 class HydraForgeClient {
 public:
     HydraForgeClient();
@@ -54,37 +27,34 @@ public:
     HydraForgeClient(const HydraForgeClient&) = delete;
     HydraForgeClient& operator=(const HydraForgeClient&) = delete;
 
-    // Initialize: load LLM provider, register tools, create agent.
-    // Returns true on success, false on configuration failure (e.g., missing
-    // OPENAI_API_KEY env var).
-    //
-    // Day 3 status: FetchContent(HydraForge) BLOCKED on HydraForge monorepo
-    // `external/taskflow` missing (see docs/ADR-AF-001-design.md §Known
-    // Limitations #1). Day 4 pivots to MockLLMProvider-only path; real LLM
-    // deferred until HydraForge ships install rules.
+    // Initialize: register the baseline set of domain agents.
+    // Returns true on success, false on configuration failure.
+    // U4 baseline: registers `coding_assistant` only. U4 core adds `doc_writer`.
     bool initialize();
 
-    // Start a new agent session with user_input. Returns false if a session
-    // is already running or the engine failed to start.
+    // Session lifecycle (Day 2 stub semantics; U4 baseline keeps compatibility).
     bool start_session(const std::string& user_input);
-
-    // Stop the running session (if any). Safe to call when no session is
-    // active. Sends a stop_token to the worker thread and joins cleanly.
     void stop_session();
-
-    // Check whether a session is currently active (for TUI status panel).
     bool session_active() const;
 
-    // Singleton accessor — for now AgentForge has exactly one DSLEngine
-    // instance. Future: per-session DSLEngine if we add multi-session UI.
+    // Agent discovery (U4 baseline).
+    bool has_agent(const std::string& agent_id) const;
+    size_t agent_count() const;
+    std::vector<std::string> list_agents() const;
+
+    // Agent execution. Returns a JSON string with top-level `success` bool.
+    // Returns an error JSON if the agent is unknown or the client is not
+    // initialized.
+    std::string run_agent(const std::string& agent_id, const std::string& input);
+
+    // Singleton accessor — AgentForge has exactly one DSLEngine instance.
     static HydraForgeClient& instance();
 
 private:
-    // PIMPL pattern — keep HydraForge headers out of this public header.
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace agentforge
+}  // namespace agentforge
 
 #endif // AGENTFORGE_HYDRAFORGE_CLIENT_H
