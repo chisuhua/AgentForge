@@ -44,3 +44,5 @@ Testing/Temporary/
 
 # vendor/ is committed (git subtree'd or cp -r'd); exclude vendor build outputs only
 vendor/*/build/
+# Added by code-review-graph
+.code-review-graph/
